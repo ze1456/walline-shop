@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="1200" height="900" role="img">
+  
+  <defs>
+    <linearGradient id="s6756-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7f4ed"/>
+      <stop offset="1" stop-color="#ece6d9"/>
+    </linearGradient>
+    <linearGradient id="s6756-metal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef1f4"/>
+      <stop offset="0.28" stop-color="#c6ccd3"/>
+      <stop offset="0.55" stop-color="#9aa4ae"/>
+      <stop offset="0.78" stop-color="#dde2e7"/>
+      <stop offset="1" stop-color="#aeb6bf"/>
+    </linearGradient>
+    <linearGradient id="s6756-brass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e2c79a"/>
+      <stop offset="0.5" stop-color="#b3894f"/>
+      <stop offset="1" stop-color="#856234"/>
+    </linearGradient>
+    <linearGradient id="s6756-wood" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6f6259"/>
+      <stop offset="0.5" stop-color="#574c45"/>
+      <stop offset="1" stop-color="#3d3530"/>
+    </linearGradient>
+    <filter id="s6756-soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#141a20" flood-opacity="0.18"/>
+    </filter>
+    <filter id="s6756-grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+    </filter>
+  </defs>
+  
+  <rect width="1200" height="900" fill="url(#s6756-bg)"/>
+  <rect x="46" y="46" width="1108" height="808" fill="none" stroke="#b3894f" stroke-opacity="0.35" stroke-width="1.5"/>
+  <g opacity="0.35" stroke="#cfc6b2" stroke-width="1">
+    <line x1="0" y1="0" x2="1200" y2="0"/><line x1="0" y1="90" x2="1200" y2="90"/><line x1="0" y1="180" x2="1200" y2="180"/><line x1="0" y1="270" x2="1200" y2="270"/><line x1="0" y1="360" x2="1200" y2="360"/><line x1="0" y1="450" x2="1200" y2="450"/><line x1="0" y1="540" x2="1200" y2="540"/><line x1="0" y1="630" x2="1200" y2="630"/><line x1="0" y1="720" x2="1200" y2="720"/><line x1="0" y1="810" x2="1200" y2="810"/><line x1="0" y1="900" x2="1200" y2="900"/>
+  </g>
+  
+  <g filter="url(#s6756-soft)">
+    <rect x="220" y="140" width="760" height="620" rx="6" fill="url(#s6756-wood)"/>
+    <clipPath id="s6756-clip-220"><rect x="220" y="140" width="760" height="620" rx="6"/></clipPath>
+    <g clip-path="url(#s6756-clip-220)"><path d="M220 203.25274632591754 C432.8 96.0704139577225, 691.2 310.4350786941126, 980 160.3798133786395" stroke="#4b3524" stroke-opacity="0.16158734122756868" stroke-width="1.4570656459778548" fill="none" stroke-linecap="round"/><path d="M220 269.39770412025973 C432.8 157.7431678923778, 691.2 381.05224034814165, 980 224.73588962910696" stroke="#4b3524" stroke-opacity="0.15557740794494748" stroke-width="2.1223764266818765" fill="none" stroke-linecap="round"/><path d="M220 325.5286211371422 C432.8 255.06172521114348, 691.2 395.9955170631409, 980 297.3418627667427" stroke="#4b3524" stroke-opacity="0.16211740714963524" stroke-width="1.1181017708033323" fill="none" stroke-linecap="round"/><path d="M220 383.3706525955349 C432.8 307.42362450696527, 691.2 459.3176806841046, 980 352.99184136010706" stroke="#4b3524" stroke-opacity="0.14505529797635972" stroke-width="1.3427437614649533" fill="none" stroke-linecap="round"/><path d="M220 444.2220786898397 C432.8 362.445561441686, 691.2 525.9985959379934, 980 411.5114717905782" stroke="#4b3524" stroke-opacity="0.16772055237554012" stroke-width="2.4715230289846657" fill="none" stroke-linecap="round"/><path d="M220 517.3968510199338 C432.8 349.028191773966, 691.2 685.7655102659016, 980 450.04938732154665" stroke="#4b3524" stroke-opacity="0.16608528302051126" stroke-width="1.4574455916881561" fill="none" stroke-linecap="round"/><path d="M220 575.0383479990996 C432.8 419.8982216947712, 691.2 730.1784743034281, 980 512.9822974773683" stroke="#4b3524" stroke-opacity="0.21259504231158644" stroke-width="1.747723925113678" fill="none" stroke-linecap="round"/><path d="M220 640.2546428502537 C432.8 490.33505839267747, 691.2 790.17422730783, 980 580.2868090672232" stroke="#4b3524" stroke-opacity="0.13244441962335257" stroke-width="2.3651911936700345" fill="none" stroke-linecap="round"/><path d="M220 701.2860064050183 C432.8 522.0050419559702, 691.2 880.5669708540663, 980 629.573620625399" stroke="#4b3524" stroke-opacity="0.13902843418065458" stroke-width="1.0956403739750384" fill="none" stroke-linecap="round"/></g>
+    <rect x="220" y="140" width="26" height="620" fill="url(#s6756-metal)" opacity="0.92"/>
+    <rect x="954" y="140" width="26" height="620" fill="url(#s6756-metal)" opacity="0.92"/>
+    <rect x="246" y="140" width="5" height="620" fill="#b3894f" opacity="0.55"/>
+    <rect x="949" y="140" width="5" height="620" fill="#b3894f" opacity="0.55"/>
+  </g>
+  <g stroke="none" fill="url(#s6756-brass)" opacity="0.9">
+    <rect x="166" y="180" width="34" height="180"/>
+    <rect x="1000" y="540" width="34" height="180"/>
+  </g>
+  <rect width="1200" height="900" filter="url(#s6756-grain)" opacity="0.05"/>
+  <text x="1146" y="836" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="22" letter-spacing="12" fill="#141a20" opacity="0.24">WALLINE</text>
+  <text x="1146" y="864" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="13" letter-spacing="6" fill="#b3894f" opacity="0.24">WALLINE · 沃澜</text>
+</svg>
