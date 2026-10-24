@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { checkAdminPassword, clearAdminCookie, isAdmin, setAdminCookie } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { dbGet, dbRun } from "@/lib/db";
 import { centsFromYuanInput } from "@/lib/money";
 import { localeHref, normalizeLocale } from "@/lib/i18n";
 import { markOrderPaid, updateOrderStatus } from "@/lib/orders";
@@ -73,21 +73,23 @@ export async function saveProduct(formData: FormData): Promise<void> {
   ];
 
   if (id > 0) {
-    db.prepare(
+    await dbRun(
       `UPDATE products SET slug = ?, category = ?, name_zh = ?, name_en = ?, subtitle_zh = ?, subtitle_en = ?,
         description_zh = ?, description_en = ?, price_cents = ?, compare_at_cents = ?, unit_zh = ?, unit_en = ?,
         moq = ?, weight_g = ?, stock = ?, featured = ?, badge_zh = ?, badge_en = ?, image = ?, active = ?, sort = ?,
         updated_at = datetime('now')
        WHERE id = ?`,
-    ).run(...values, id);
+      [...values, id],
+    );
   } else {
-    db.prepare(
+    await dbRun(
       `INSERT INTO products (
         slug, category, name_zh, name_en, subtitle_zh, subtitle_en, description_zh, description_en,
         price_cents, compare_at_cents, unit_zh, unit_en, moq, weight_g, stock, featured, badge_zh, badge_en,
         image, active, sort, images, specs
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(...values, JSON.stringify([`/images/products/${slug}.svg`]), "[]");
+      [...values, JSON.stringify([`/images/products/${slug}.svg`]), "[]"],
+    );
   }
   revalidatePath("/", "layout");
   redirect(`${adminHome(locale)}/products?saved=1`);
@@ -98,8 +100,8 @@ export async function deleteProduct(formData: FormData): Promise<void> {
   await requireAdmin(locale);
   const id = int(formData, "id");
   if (id > 0) {
-    db.prepare("DELETE FROM variants WHERE product_id = ?").run(id);
-    db.prepare("DELETE FROM products WHERE id = ?").run(id);
+    await dbRun("DELETE FROM variants WHERE product_id = ?", [id]);
+    await dbRun("DELETE FROM products WHERE id = ?", [id]);
   }
   revalidatePath("/", "layout");
   redirect(`${adminHome(locale)}/products?deleted=1`);
@@ -113,8 +115,8 @@ export async function updateOrderAdmin(formData: FormData): Promise<void> {
   const tracking = text(formData, "trackingNo");
   const paymentStatus = text(formData, "paymentStatus");
   if (id > 0) {
-    if (status) updateOrderStatus(id, status, tracking);
-    if (paymentStatus === "paid") markOrderPaid(id, "admin");
+    if (status) await updateOrderStatus(id, status, tracking);
+    if (paymentStatus === "paid") await markOrderPaid(id, "admin");
   }
   revalidatePath("/", "layout");
   redirect(`${adminHome(locale)}/orders/${id}?saved=1`);
@@ -128,7 +130,7 @@ export async function saveCoupon(formData: FormData): Promise<void> {
   const type = text(formData, "type") === "fixed" ? "fixed" : "percent";
   const rawValue = text(formData, "value");
   const value = type === "fixed" ? centsFromYuanInput(rawValue) : Math.max(1, Math.round(Number(rawValue) || 0));
-  const existing = db.prepare("SELECT id FROM coupons WHERE code = ?").get(code) as { id: number } | undefined;
+  const existing = await dbGet<{ id: number }>("SELECT id FROM coupons WHERE code = ?", [code]);
   const row = [
     type,
     value,
@@ -138,14 +140,15 @@ export async function saveCoupon(formData: FormData): Promise<void> {
     formData.get("active") ? 1 : 0,
   ];
   if (existing) {
-    db.prepare("UPDATE coupons SET type = ?, value = ?, min_subtotal_cents = ?, expires_at = ?, max_uses = ?, active = ? WHERE id = ?").run(
+    await dbRun("UPDATE coupons SET type = ?, value = ?, min_subtotal_cents = ?, expires_at = ?, max_uses = ?, active = ? WHERE id = ?", [
       ...row,
       existing.id,
-    );
+    ]);
   } else {
-    db.prepare(
+    await dbRun(
       "INSERT INTO coupons (code, type, value, min_subtotal_cents, expires_at, max_uses, used_count, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, datetime('now'))",
-    ).run(code, ...row);
+      [code, ...row],
+    );
   }
   redirect(`${adminHome(locale)}/coupons?saved=1`);
 }
@@ -154,6 +157,6 @@ export async function toggleCoupon(formData: FormData): Promise<void> {
   const locale = normalizeLocale(String(formData.get("locale") ?? ""));
   await requireAdmin(locale);
   const id = int(formData, "id");
-  if (id > 0) db.prepare("UPDATE coupons SET active = 1 - active WHERE id = ?").run(id);
+  if (id > 0) await dbRun("UPDATE coupons SET active = 1 - active WHERE id = ?", [id]);
   redirect(`${adminHome(locale)}/coupons`);
 }

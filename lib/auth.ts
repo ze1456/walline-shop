@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import crypto from "node:crypto";
-import { db } from "./db";
+import { dbAll, dbGet, dbRun } from "./db";
 import { hashPassword, verifyPassword } from "./password";
 import { sessionCookie, adminCookie } from "./config";
 
@@ -21,24 +21,23 @@ function randomToken(): string {
   return crypto.randomBytes(32).toString("hex");
 }
 
-export function createSession(userId: number): string {
+export async function createSession(userId: number): Promise<string> {
   const token = randomToken();
   const expires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString().replace("T", " ").slice(0, 19);
-  db.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)").run(token, userId, expires);
+  await dbRun("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)", [token, userId, expires]);
   return token;
 }
 
-export function destroySession(token: string): void {
-  db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
+export async function destroySession(token: string): Promise<void> {
+  await dbRun("DELETE FROM sessions WHERE token = ?", [token]);
 }
 
-export function getUserBySession(token: string): UserRow | undefined {
-  return db
-    .prepare(
-      `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-       WHERE s.token = ? AND s.expires_at > datetime('now')`,
-    )
-    .get(token) as unknown as UserRow | undefined;
+export async function getUserBySession(token: string): Promise<UserRow | undefined> {
+  return dbGet<UserRow>(
+    `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.token = ? AND s.expires_at > datetime('now')`,
+    [token],
+  );
 }
 
 /** Read the current user in a server component or server action. */
@@ -54,48 +53,52 @@ export async function getSessionToken(): Promise<string | undefined> {
   return store.get(sessionCookie)?.value;
 }
 
-export function getUserByEmail(email: string): UserRow | undefined {
-  return db.prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(email.trim()) as unknown as UserRow | undefined;
+export async function getUserByEmail(email: string): Promise<UserRow | undefined> {
+  return dbGet<UserRow>("SELECT * FROM users WHERE email = ? COLLATE NOCASE", [email.trim()]);
 }
 
-export function getUserById(id: number): UserRow | undefined {
-  return db.prepare("SELECT * FROM users WHERE id = ?").get(id) as unknown as UserRow | undefined;
+export async function getUserById(id: number): Promise<UserRow | undefined> {
+  return dbGet<UserRow>("SELECT * FROM users WHERE id = ?", [id]);
 }
 
 export type RegisterResult = { ok: true; user: UserRow } | { ok: false; error: "exists" | "invalid" };
 
-export function registerUser(input: { email: string; password: string; name: string; country?: string }): RegisterResult {
+export async function registerUser(input: { email: string; password: string; name: string; country?: string }): Promise<RegisterResult> {
   const email = input.email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || input.password.length < 6) return { ok: false, error: "invalid" };
-  if (getUserByEmail(email)) return { ok: false, error: "exists" };
-  db.prepare("INSERT INTO users (email, password_hash, name, country) VALUES (?, ?, ?, ?)").run(
+  if (await getUserByEmail(email)) return { ok: false, error: "exists" };
+  await dbRun("INSERT INTO users (email, password_hash, name, country) VALUES (?, ?, ?, ?)", [
     email,
     hashPassword(input.password),
     input.name.trim(),
     input.country ?? "CN",
-  );
-  const user = getUserByEmail(email)!;
+  ]);
+  const user = (await getUserByEmail(email))!;
   return { ok: true, user };
 }
 
-export function authenticate(email: string, password: string): UserRow | undefined {
-  const user = getUserByEmail(email);
+export async function authenticate(email: string, password: string): Promise<UserRow | undefined> {
+  const user = await getUserByEmail(email);
   if (!user) return undefined;
   return verifyPassword(password, user.password_hash) ? user : undefined;
 }
 
-export function updateUserProfile(userId: number, input: { name: string; phone: string; company: string; country: string }): void {
-  db.prepare("UPDATE users SET name = ?, phone = ?, company = ?, country = ? WHERE id = ?").run(
+export async function updateUserProfile(
+  userId: number,
+  input: { name: string; phone: string; company: string; country: string },
+): Promise<void> {
+  await dbRun("UPDATE users SET name = ?, phone = ?, company = ?, country = ? WHERE id = ?", [
     input.name.trim(),
     input.phone.trim(),
     input.company.trim(),
     input.country,
     userId,
-  );
+  ]);
 }
 
-export function countUsers(): number {
-  return (db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n;
+export async function countUsers(): Promise<number> {
+  const row = await dbGet<{ n: number }>("SELECT COUNT(*) AS n FROM users");
+  return row?.n ?? 0;
 }
 
 // ---------------------------------------------------------------------------

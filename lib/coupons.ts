@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { dbAll, dbGet, dbRun } from "./db";
 
 export interface CouponRow {
   id: number;
@@ -17,17 +17,17 @@ export type CouponResult =
   | { ok: true; coupon: CouponRow; discountCents: number }
   | { ok: false; error: "invalid" | "expired" | "min" };
 
-export function getCoupon(code: string): CouponRow | undefined {
-  return db.prepare("SELECT * FROM coupons WHERE code = ? COLLATE NOCASE").get(code.trim()) as unknown as CouponRow | undefined;
+export async function getCoupon(code: string): Promise<CouponRow | undefined> {
+  return dbGet<CouponRow>("SELECT * FROM coupons WHERE code = ? COLLATE NOCASE", [code.trim()]);
 }
 
-export function listCoupons(): CouponRow[] {
-  return db.prepare("SELECT * FROM coupons ORDER BY id DESC").all() as unknown as CouponRow[];
+export async function listCoupons(): Promise<CouponRow[]> {
+  return dbAll<CouponRow>("SELECT * FROM coupons ORDER BY id DESC");
 }
 
 /** Validate a coupon against the CNY subtotal and compute the discount in CNY cents. */
-export function evaluateCoupon(code: string, subtotalCents: number): CouponResult {
-  const coupon = getCoupon(code);
+export async function evaluateCoupon(code: string, subtotalCents: number): Promise<CouponResult> {
+  const coupon = await getCoupon(code);
   if (!coupon || !coupon.active) return { ok: false, error: "invalid" };
   if (coupon.expires_at) {
     const expiry = new Date(`${coupon.expires_at}T23:59:59`);
@@ -42,6 +42,6 @@ export function evaluateCoupon(code: string, subtotalCents: number): CouponResul
   return { ok: true, coupon, discountCents };
 }
 
-export function redeemCoupon(code: string): void {
-  db.prepare("UPDATE coupons SET used_count = used_count + 1 WHERE code = ? COLLATE NOCASE").run(code);
+export async function redeemCoupon(code: string): Promise<void> {
+  await dbRun("UPDATE coupons SET used_count = used_count + 1 WHERE code = ? COLLATE NOCASE", [code]);
 }

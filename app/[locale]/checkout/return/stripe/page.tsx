@@ -16,11 +16,11 @@ export default async function StripeReturnPage({
   const query = await searchParams;
   const orderNo = typeof query.order === "string" ? query.order : "";
   const sessionId = typeof query.session_id === "string" ? query.session_id : "";
-  const order = orderNo ? getOrderByNo(orderNo) : undefined;
+  const order = orderNo ? await getOrderByNo(orderNo) : undefined;
 
   if (order && sessionId && order.payment_status !== "paid") {
     const verified = await verifyStripeSession(sessionId);
-    if (verified.paid) markOrderPaid(order.id, sessionId);
+    if (verified.paid) await markOrderPaid(order.id, sessionId);
   }
 
   redirect(localeHref(locale, order ? `/orders/${order.order_no}?paid=1` : "/account/orders"));

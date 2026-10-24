@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import crypto from "node:crypto";
-import { db } from "./db";
+import { dbAll, dbGet, dbRun } from "./db";
 import { cartCookie } from "./config";
 import { evaluateCoupon } from "./coupons";
 
@@ -60,24 +60,23 @@ interface CartItemJoinRow {
   variant_stock: number | null;
 }
 
-export function loadCart(cartId: string | null | undefined): Cart {
+export async function loadCart(cartId: string | null | undefined): Promise<Cart> {
   if (!cartId) return emptyCart();
-  const record = db.prepare("SELECT * FROM carts WHERE id = ?").get(cartId) as { id: string; coupon_code: string } | undefined;
+  const record = await dbGet<{ id: string; coupon_code: string }>("SELECT * FROM carts WHERE id = ?", [cartId]);
   if (!record) return emptyCart();
-  const rows = db
-    .prepare(
-      `SELECT ci.id AS item_id, ci.qty, ci.product_id, ci.variant_id,
-              p.slug, p.name_zh, p.name_en, p.image, p.unit_zh, p.unit_en,
-              p.price_cents, p.weight_g, p.stock, p.moq,
-              v.name_zh AS variant_name_zh, v.name_en AS variant_name_en,
-              v.price_delta_cents AS variant_delta, v.image AS variant_image, v.stock AS variant_stock
-       FROM cart_items ci
-       JOIN products p ON p.id = ci.product_id
-       LEFT JOIN variants v ON v.id = ci.variant_id
-       WHERE ci.cart_id = ?
-       ORDER BY ci.id ASC`,
-    )
-    .all(cartId) as unknown as CartItemJoinRow[];
+  const rows = await dbAll<CartItemJoinRow>(
+    `SELECT ci.id AS item_id, ci.qty, ci.product_id, ci.variant_id,
+            p.slug, p.name_zh, p.name_en, p.image, p.unit_zh, p.unit_en,
+            p.price_cents, p.weight_g, p.stock, p.moq,
+            v.name_zh AS variant_name_zh, v.name_en AS variant_name_en,
+            v.price_delta_cents AS variant_delta, v.image AS variant_image, v.stock AS variant_stock
+     FROM cart_items ci
+     JOIN products p ON p.id = ci.product_id
+     LEFT JOIN variants v ON v.id = ci.variant_id
+     WHERE ci.cart_id = ?
+     ORDER BY ci.id ASC`,
+    [cartId],
+  );
 
   const lines: CartLine[] = rows.map((row) => ({
     itemId: row.item_id,
@@ -104,7 +103,7 @@ export function loadCart(cartId: string | null | undefined): Cart {
   let discountCents = 0;
   let couponError: Cart["couponError"];
   if (record.coupon_code) {
-    const result = evaluateCoupon(record.coupon_code, subtotalCents);
+    const result = await evaluateCoupon(record.coupon_code, subtotalCents);
     if (result.ok) discountCents = result.discountCents;
     else couponError = result.error;
   }
@@ -140,11 +139,11 @@ export async function ensureCart(): Promise<string> {
   const store = await cookies();
   const existing = store.get(cartCookie)?.value;
   if (existing) {
-    const found = db.prepare("SELECT id FROM carts WHERE id = ?").get(existing) as { id: string } | undefined;
+    const found = await dbGet<{ id: string }>("SELECT id FROM carts WHERE id = ?", [existing]);
     if (found) return found.id;
   }
   const id = crypto.randomBytes(16).toString("hex");
-  db.prepare("INSERT INTO carts (id) VALUES (?)").run(id);
+  await dbRun("INSERT INTO carts (id) VALUES (?)", [id]);
   store.set(cartCookie, id, {
     httpOnly: true,
     sameSite: "lax",
@@ -155,59 +154,63 @@ export async function ensureCart(): Promise<string> {
   return id;
 }
 
-export function addCartItem(cartId: string, productId: number, variantId: number | null, qty: number): void {
-  const product = db.prepare("SELECT price_cents, stock, moq FROM products WHERE id = ? AND active = 1").get(productId) as
-    | { price_cents: number; stock: number; moq: number }
-    | undefined;
+export async function addCartItem(cartId: string, productId: number, variantId: number | null, qty: number): Promise<void> {
+  const product = await dbGet<{ price_cents: number; stock: number; moq: number }>(
+    "SELECT price_cents, stock, moq FROM products WHERE id = ? AND active = 1",
+    [productId],
+  );
   if (!product) return;
-  const existing = db
-    .prepare("SELECT id, qty FROM cart_items WHERE cart_id = ? AND product_id = ? AND variant_id IS ?")
-    .get(cartId, productId, variantId) as { id: number; qty: number } | undefined;
+  const existing = await dbGet<{ id: number; qty: number }>(
+    "SELECT id, qty FROM cart_items WHERE cart_id = ? AND product_id = ? AND variant_id IS ?",
+    [cartId, productId, variantId],
+  );
   const desired = Math.max(product.moq, (existing?.qty ?? 0) + Math.max(1, Math.round(qty)));
   const capped = product.stock > 0 ? Math.min(desired, product.stock) : desired;
   if (existing) {
-    db.prepare("UPDATE cart_items SET qty = ? WHERE id = ?").run(capped, existing.id);
+    await dbRun("UPDATE cart_items SET qty = ? WHERE id = ?", [capped, existing.id]);
   } else {
-    db.prepare("INSERT INTO cart_items (cart_id, product_id, variant_id, qty) VALUES (?, ?, ?, ?)").run(
+    await dbRun("INSERT INTO cart_items (cart_id, product_id, variant_id, qty) VALUES (?, ?, ?, ?)", [
       cartId,
       productId,
       variantId,
       capped,
-    );
+    ]);
   }
-  db.prepare("UPDATE carts SET updated_at = datetime('now') WHERE id = ?").run(cartId);
+  await dbRun("UPDATE carts SET updated_at = datetime('now') WHERE id = ?", [cartId]);
 }
 
-export function setCartItemQty(cartId: string, itemId: number, qty: number): void {
+export async function setCartItemQty(cartId: string, itemId: number, qty: number): Promise<void> {
   if (qty <= 0) {
-    removeCartItem(cartId, itemId);
+    await removeCartItem(cartId, itemId);
     return;
   }
-  const row = db
-    .prepare(
-      `SELECT ci.id, p.stock, p.moq, v.stock AS variant_stock
-       FROM cart_items ci JOIN products p ON p.id = ci.product_id
-       LEFT JOIN variants v ON v.id = ci.variant_id
-       WHERE ci.id = ? AND ci.cart_id = ?`,
-    )
-    .get(itemId, cartId) as { id: number; stock: number; moq: number; variant_stock: number | null } | undefined;
+  const row = await dbGet<{ id: number; stock: number; moq: number; variant_stock: number | null }>(
+    `SELECT ci.id, p.stock, p.moq, v.stock AS variant_stock
+     FROM cart_items ci JOIN products p ON p.id = ci.product_id
+     LEFT JOIN variants v ON v.id = ci.variant_id
+     WHERE ci.id = ? AND ci.cart_id = ?`,
+    [itemId, cartId],
+  );
   if (!row) return;
   const stock = row.variant_stock ?? row.stock;
   const capped = stock > 0 ? Math.min(Math.max(row.moq, qty), stock) : Math.max(row.moq, qty);
-  db.prepare("UPDATE cart_items SET qty = ? WHERE id = ?").run(capped, itemId);
+  await dbRun("UPDATE cart_items SET qty = ? WHERE id = ?", [capped, itemId]);
 }
 
-export function removeCartItem(cartId: string, itemId: number): void {
-  db.prepare("DELETE FROM cart_items WHERE id = ? AND cart_id = ?").run(itemId, cartId);
+export async function removeCartItem(cartId: string, itemId: number): Promise<void> {
+  await dbRun("DELETE FROM cart_items WHERE id = ? AND cart_id = ?", [itemId, cartId]);
 }
 
-export function clearCartItems(cartId: string): void {
-  db.prepare("DELETE FROM cart_items WHERE cart_id = ?").run(cartId);
-  db.prepare("UPDATE carts SET coupon_code = '' WHERE id = ?").run(cartId);
+export async function clearCartItems(cartId: string): Promise<void> {
+  await dbRun("DELETE FROM cart_items WHERE cart_id = ?", [cartId]);
+  await dbRun("UPDATE carts SET coupon_code = '' WHERE id = ?", [cartId]);
 }
 
-export function setCartCoupon(cartId: string, code: string): void {
-  db.prepare("UPDATE carts SET coupon_code = ?, updated_at = datetime('now') WHERE id = ?").run(code.trim().toUpperCase(), cartId);
+export async function setCartCoupon(cartId: string, code: string): Promise<void> {
+  await dbRun("UPDATE carts SET coupon_code = ?, updated_at = datetime('now') WHERE id = ?", [
+    code.trim().toUpperCase(),
+    cartId,
+  ]);
 }
 
 export async function getCurrentCartId(): Promise<string | undefined> {

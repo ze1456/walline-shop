@@ -15,7 +15,7 @@ export default async function AccountOrdersPage({ params }: { params: Promise<{ 
   const user = await getCurrentUser();
   if (!user) redirect(localeHref(locale, "/account/login"));
   const dict = getDictionary(locale);
-  const orders = listOrdersForUser(user.id);
+  const orders = await listOrdersForUser(user.id);
 
   return (
     <div className="wrap py-10 md:py-14">

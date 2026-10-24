@@ -9,11 +9,11 @@ export async function signIn(formData: FormData): Promise<void> {
   const locale = normalizeLocale(String(formData.get("locale") ?? ""));
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const user = authenticate(email, password);
+  const user = await authenticate(email, password);
   if (!user) {
     redirect(`${localeHref(locale, "/account/login")}?error=credentials`);
   }
-  const token = createSession(user.id);
+  const token = await createSession(user.id);
   await setSessionCookie(token);
   revalidatePath("/", "layout");
   redirect(localeHref(locale, "/account"));
@@ -25,11 +25,11 @@ export async function signUp(formData: FormData): Promise<void> {
   const password = String(formData.get("password") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (password.length < 6) redirect(`${localeHref(locale, "/account/register")}?error=password`);
-  const result = registerUser({ email, password, name });
+  const result = await registerUser({ email, password, name });
   if (!result.ok) {
     redirect(`${localeHref(locale, "/account/register")}?error=${result.error}`);
   }
-  const token = createSession(result.user.id);
+  const token = await createSession(result.user.id);
   await setSessionCookie(token);
   revalidatePath("/", "layout");
   redirect(localeHref(locale, "/account"));
@@ -38,7 +38,7 @@ export async function signUp(formData: FormData): Promise<void> {
 export async function signOut(formData: FormData): Promise<void> {
   const locale = normalizeLocale(String(formData.get("locale") ?? ""));
   const token = await getSessionToken();
-  if (token) destroySession(token);
+  if (token) await destroySession(token);
   await clearSessionCookie();
   revalidatePath("/", "layout");
   redirect(localeHref(locale));
@@ -48,7 +48,7 @@ export async function saveProfile(formData: FormData): Promise<void> {
   const locale = normalizeLocale(String(formData.get("locale") ?? ""));
   const user = await getCurrentUser();
   if (!user) redirect(localeHref(locale, "/account/login"));
-  updateUserProfile(user.id, {
+  await updateUserProfile(user.id, {
     name: String(formData.get("name") ?? ""),
     phone: String(formData.get("phone") ?? ""),
     company: String(formData.get("company") ?? ""),

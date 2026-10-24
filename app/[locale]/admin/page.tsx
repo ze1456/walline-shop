@@ -7,7 +7,7 @@ import { isAdmin } from "@/lib/auth";
 import { countProducts } from "@/lib/data";
 import { countOrdersByStatus, listAllOrders, totalRevenueCents } from "@/lib/orders";
 import { formatCny } from "@/lib/money";
-import { db } from "@/lib/db";
+import { dbAll } from "@/lib/db";
 import { AdminShell } from "@/components/admin-shell";
 import { StatusBadge } from "@/components/status-badge";
 
@@ -18,15 +18,14 @@ export default async function AdminDashboardPage({ params }: { params: Promise<{
   if (!(await isAdmin())) redirect(localeHref(locale, "/admin/login"));
   const dict = getDictionary(locale);
 
-  const orders = listAllOrders({ limit: 8 });
-  const byStatus = countOrdersByStatus();
+  const orders = await listAllOrders({ limit: 8 });
+  const byStatus = await countOrdersByStatus();
   const pending = (byStatus.pending_payment ?? 0) + (byStatus.paid ?? 0) + (byStatus.processing ?? 0);
-  const productCount = countProducts({ includeHidden: true });
-  const revenue = totalRevenueCents();
+  const productCount = await countProducts({ includeHidden: true });
+  const revenue = await totalRevenueCents();
+  const totalOrders = await listAllOrders({ limit: 1000 });
 
-  const lowStock = db
-    .prepare("SELECT id, slug, name_zh, name_en, stock, unit_zh, unit_en FROM products WHERE active = 1 ORDER BY stock ASC LIMIT 6")
-    .all() as unknown as {
+  const lowStock = await dbAll<{
     id: number;
     slug: string;
     name_zh: string;
@@ -34,11 +33,11 @@ export default async function AdminDashboardPage({ params }: { params: Promise<{
     stock: number;
     unit_zh: string;
     unit_en: string;
-  }[];
+  }>("SELECT id, slug, name_zh, name_en, stock, unit_zh, unit_en FROM products WHERE active = 1 ORDER BY stock ASC LIMIT 6");
 
   const stats = [
     { label: dict.admin.revenue, value: formatCny(revenue), hint: tr(locale, { zh: "已支付订单合计", en: "Paid orders total" }) },
-    { label: dict.admin.orderCount, value: String(listAllOrders({ limit: 1000 }).length), hint: tr(locale, { zh: "全部订单", en: "All orders" }) },
+    { label: dict.admin.orderCount, value: String(totalOrders.length), hint: tr(locale, { zh: "全部订单", en: "All orders" }) },
     { label: dict.admin.pendingCount, value: String(pending), hint: tr(locale, { zh: "待付款 / 处理中", en: "Awaiting payment / processing" }) },
     { label: dict.admin.productCount, value: String(productCount), hint: tr(locale, { zh: "含已下架", en: "Including hidden" }) },
   ];

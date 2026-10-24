@@ -22,10 +22,10 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   const locale = raw as Locale;
   const dict = getDictionary(locale);
   const currency = await getCurrentCurrency();
-  const categories = listCategories();
-  const counts = categoryCounts();
-  const featured = getFeaturedProducts(8);
-  const sample = getSampleProduct();
+  const categories = await listCategories();
+  const counts = await categoryCounts();
+  const featured = await getFeaturedProducts(8);
+  const sample = await getSampleProduct();
 
   return (
     <>

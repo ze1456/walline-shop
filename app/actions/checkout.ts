@@ -24,7 +24,7 @@ export async function placeOrder(formData: FormData): Promise<void> {
   const requestedMethod = String(formData.get("paymentMethod") ?? "bank_transfer") as PaymentMethodId;
   const paymentMethod = paymentIds.includes(requestedMethod) ? requestedMethod : "bank_transfer";
 
-  const result = createOrderFromCart({
+  const result = await createOrderFromCart({
     cartId,
     userId: user?.id ?? null,
     locale,
@@ -55,7 +55,7 @@ export async function placeOrder(formData: FormData): Promise<void> {
   if (flow === "stripe") {
     const checkout = await createStripeCheckout(order, baseUrl, locale);
     if (checkout.ok && checkout.url) {
-      setOrderPaymentRef(order.id, checkout.ref ?? "");
+      await setOrderPaymentRef(order.id, checkout.ref ?? "");
       redirect(checkout.url);
     }
     redirect(`${orderUrl}?error=psp`);
@@ -63,7 +63,7 @@ export async function placeOrder(formData: FormData): Promise<void> {
 
   const paypal = await createPaypalOrder(order, baseUrl, locale);
   if (paypal.ok && paypal.url) {
-    setOrderPaymentRef(order.id, paypal.ref ?? "");
+    await setOrderPaymentRef(order.id, paypal.ref ?? "");
     redirect(paypal.url);
   }
   redirect(`${orderUrl}?error=psp`);
@@ -73,11 +73,11 @@ export async function placeOrder(formData: FormData): Promise<void> {
 export async function payDemo(formData: FormData): Promise<void> {
   const locale = normalizeLocale(String(formData.get("locale") ?? ""));
   const orderNo = String(formData.get("orderNo") ?? "");
-  const order = getOrderByNo(orderNo);
+  const order = await getOrderByNo(orderNo);
   if (!order) redirect(localeHref(locale, "/account/orders"));
   const flow = paymentFlowFor(order.payment_method as PaymentMethodId, order.currency);
   if (flow === "demo" && order.payment_status !== "paid") {
-    markOrderPaid(order.id, "demo");
+    await markOrderPaid(order.id, "demo");
     revalidatePath("/", "layout");
   }
   redirect(`${localeHref(locale, `/orders/${order.order_no}`)}?paid=1`);

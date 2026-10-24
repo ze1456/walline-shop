@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { Client } from "@libsql/client";
 import { nowSql } from "./db";
 import { currencies } from "./config";
 import { hashPassword } from "./password";
@@ -672,133 +672,169 @@ function slugifyVariant(productSlug: string, index: number): string {
   return `${productSlug.toUpperCase().replace(/-/g, "")}-${String(index + 1).padStart(2, "0")}`;
 }
 
-export function seedDatabase(db: DatabaseSync): void {
-  const row = db.prepare("SELECT COUNT(*) AS n FROM products").get() as { n: number };
-  if (row.n > 0) {
+export async function seedDatabase(client: Client): Promise<void> {
+  const countRes = await client.execute("SELECT COUNT(*) AS n FROM products");
+  const n = countRes.rows.length > 0 ? Number(countRes.rows[0].n) : 0;
+  if (n > 0) {
     return;
   }
 
-  const insertCategory = db.prepare(
-    "INSERT INTO categories (slug, name_zh, name_en, tagline_zh, tagline_en, description_zh, description_en, image, sort) VALUES (?,?,?,?,?,?,?,?,?)",
-  );
+  const insertCategory =
+    "INSERT INTO categories (slug, name_zh, name_en, tagline_zh, tagline_en, description_zh, description_en, image, sort) VALUES (?,?,?,?,?,?,?,?,?)";
   for (const c of CATEGORIES) {
-    insertCategory.run(c.slug, c.name[0], c.name[1], c.tagline[0], c.tagline[1], c.description[0], c.description[1], c.image, c.sort);
+    await client.execute({
+      sql: insertCategory,
+      args: [c.slug, c.name[0], c.name[1], c.tagline[0], c.tagline[1], c.description[0], c.description[1], c.image, c.sort],
+    });
   }
 
-  const insertProduct = db.prepare(`
+  const insertProduct = `
     INSERT INTO products
       (slug, category, name_zh, name_en, subtitle_zh, subtitle_en, description_zh, description_en,
        price_cents, compare_at_cents, unit_zh, unit_en, moq, weight_g, stock, featured, badge_zh, badge_en,
        image, images, specs, sort)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-  `);
-  const insertVariant = db.prepare(
-    "INSERT INTO variants (product_id, sku, name_zh, name_en, price_delta_cents, image, stock, sort) VALUES (?,?,?,?,?,?,?,?)",
-  );
+  `;
+  const insertVariant =
+    "INSERT INTO variants (product_id, sku, name_zh, name_en, price_delta_cents, image, stock, sort) VALUES (?,?,?,?,?,?,?,?)";
 
   for (const p of PRODUCTS) {
     const image = `/images/products/${p.slug}.svg`;
     const images = [image, `/images/products/${p.slug}-b.svg`];
     const specs = p.specs.map(([kZh, kEn, vZh, vEn]) => ({ kZh, kEn, vZh, vEn }));
-    const result = insertProduct.run(
-      p.slug,
-      p.category,
-      p.name[0],
-      p.name[1],
-      p.subtitle[0],
-      p.subtitle[1],
-      p.description[0],
-      p.description[1],
-      p.price,
-      p.compare ?? null,
-      p.unit[0],
-      p.unit[1],
-      p.moq ?? 1,
-      p.weight,
-      p.stock,
-      p.featured ? 1 : 0,
-      p.badge?.[0] ?? null,
-      p.badge?.[1] ?? null,
-      image,
-      JSON.stringify(images),
-      JSON.stringify(specs),
-      p.sort ?? 0,
-    );
+    const result = await client.execute({
+      sql: insertProduct,
+      args: [
+        p.slug,
+        p.category,
+        p.name[0],
+        p.name[1],
+        p.subtitle[0],
+        p.subtitle[1],
+        p.description[0],
+        p.description[1],
+        p.price,
+        p.compare ?? null,
+        p.unit[0],
+        p.unit[1],
+        p.moq ?? 1,
+        p.weight,
+        p.stock,
+        p.featured ? 1 : 0,
+        p.badge?.[0] ?? null,
+        p.badge?.[1] ?? null,
+        image,
+        JSON.stringify(images),
+        JSON.stringify(specs),
+        p.sort ?? 0,
+      ],
+    });
     const productId = Number(result.lastInsertRowid);
     const variants = p.variants ?? [];
-    variants.forEach((v, i) => {
-      insertVariant.run(productId, slugifyVariant(p.slug, i), v[0], v[1], 0, image, p.stock, i);
-    });
+    for (let i = 0; i < variants.length; i += 1) {
+      const v = variants[i];
+      await client.execute({
+        sql: insertVariant,
+        args: [productId, slugifyVariant(p.slug, i), v[0], v[1], 0, image, p.stock, i],
+      });
+    }
   }
 
-  const insertCoupon = db.prepare(
-    "INSERT INTO coupons (code, type, value, min_subtotal_cents, expires_at, max_uses) VALUES (?,?,?,?,?,?)",
-  );
+  const insertCoupon = "INSERT INTO coupons (code, type, value, min_subtotal_cents, expires_at, max_uses) VALUES (?,?,?,?,?,?)";
   for (const c of COUPONS) {
-    insertCoupon.run(c.code, c.type, c.value, c.min, c.expires, c.maxUses);
+    await client.execute({ sql: insertCoupon, args: [c.code, c.type, c.value, c.min, c.expires, c.maxUses] });
   }
 
-  const insertShipping = db.prepare(`
+  const insertShipping = `
     INSERT INTO shipping_methods
       (code, name_zh, name_en, carrier_zh, carrier_en, country_group, base_cents, per_kg_cents, free_over_cents, days_min, days_max, sort)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-  `);
+  `;
   for (const s of SHIPPING) {
-    insertShipping.run(s.code, s.zh, s.en, s.carrierZh, s.carrierEn, s.group, s.base, s.perKg, s.freeOver, s.min, s.max, s.sort);
+    await client.execute({
+      sql: insertShipping,
+      args: [s.code, s.zh, s.en, s.carrierZh, s.carrierEn, s.group, s.base, s.perKg, s.freeOver, s.min, s.max, s.sort],
+    });
   }
 
-  const insertSetting = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
-  insertSetting.run("brand_name", "WALLINE");
-  insertSetting.run("free_shipping_note_zh", "国内订单满 ¥999 免运费（顺丰）");
-  insertSetting.run("free_shipping_note_en", "Free SF Express shipping on China orders over ¥999");
+  const insertSetting = "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)";
+  await client.execute({ sql: insertSetting, args: ["brand_name", "WALLINE"] });
+  await client.execute({ sql: insertSetting, args: ["free_shipping_note_zh", "国内订单满 ¥999 免运费（顺丰）"] });
+  await client.execute({ sql: insertSetting, args: ["free_shipping_note_en", "Free SF Express shipping on China orders over ¥999"] });
   for (const [code, currency] of Object.entries(currencies)) {
-    insertSetting.run(`rate_${code}`, String(currency.rate));
+    await client.execute({ sql: insertSetting, args: [`rate_${code}`, String(currency.rate)] });
   }
 
   // Demo account so the order history UI can be explored immediately.
-  const demo = db.prepare("SELECT id FROM users WHERE email = ?").get("demo@walline.com") as { id: number } | undefined;
+  const demoRes = await client.execute({ sql: "SELECT id FROM users WHERE email = ?", args: ["demo@walline.com"] });
+  const demo = demoRes.rows.length > 0 ? ({ ...demoRes.rows[0] } as unknown as { id: number }) : undefined;
   let demoUserId: number | null = null;
   if (!demo) {
-    const inserted = db
-      .prepare("INSERT INTO users (email, password_hash, name, phone, company, country) VALUES (?,?,?,?,?,?)")
-      .run("demo@walline.com", hashPassword("demo1234"), "张先生", "+86 139 0000 0000", "佛山雅居装饰工程有限公司", "CN");
+    const inserted = await client.execute({
+      sql: "INSERT INTO users (email, password_hash, name, phone, company, country) VALUES (?,?,?,?,?,?)",
+      args: ["demo@walline.com", hashPassword("demo1234"), "张先生", "+86 139 0000 0000", "佛山雅居装饰工程有限公司", "CN"],
+    });
     demoUserId = Number(inserted.lastInsertRowid);
   } else {
     demoUserId = demo.id;
   }
 
   // Two sample orders give the admin dashboard something real to show.
-  const panel = db.prepare("SELECT id, slug, name_zh, name_en, image, unit_zh, unit_en, weight_g FROM products WHERE slug = ?").get("panel-flat-300") as
-    | { id: number; slug: string; name_zh: string; name_en: string; image: string; unit_zh: string; unit_en: string; weight_g: number }
-    | undefined;
-  const trim = db.prepare("SELECT id, slug, name_zh, name_en, image, unit_zh, unit_en, weight_g FROM products WHERE slug = ?").get("alu-t-profile-10") as typeof panel;
+  const panelRes = await client.execute({
+    sql: "SELECT id, slug, name_zh, name_en, image, unit_zh, unit_en, weight_g FROM products WHERE slug = ?",
+    args: ["panel-flat-300"],
+  });
+  const panel = panelRes.rows.length > 0
+    ? ({ ...panelRes.rows[0] } as unknown as { id: number; slug: string; name_zh: string; name_en: string; image: string; unit_zh: string; unit_en: string; weight_g: number })
+    : undefined;
+  const trimRes = await client.execute({
+    sql: "SELECT id, slug, name_zh, name_en, image, unit_zh, unit_en, weight_g FROM products WHERE slug = ?",
+    args: ["alu-t-profile-10"],
+  });
+  const trim = trimRes.rows.length > 0
+    ? ({ ...trimRes.rows[0] } as unknown as { id: number; slug: string; name_zh: string; name_en: string; image: string; unit_zh: string; unit_en: string; weight_g: number })
+    : undefined;
 
   if (panel && trim) {
     const now = nowSql();
-    const order1 = db
-      .prepare(
-        `INSERT INTO orders (order_no, user_id, locale, currency, fx_rate, email, name, phone, company, country, province, city, address, postal,
-          subtotal_cents, shipping_cents, discount_cents, total_cents, coupon_code, shipping_code, shipping_days, payment_method, payment_status, status, created_at, paid_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      )
-      .run("WL20261018001", demoUserId, "zh", "CNY", 1, "demo@walline.com", "张先生", "+86 139 0000 0000", "佛山雅居装饰工程有限公司", "CN", "广东省", "佛山市", "南海区里水镇和顺花园 3 座 1802", "528244", 174000, 0, 17400, 156600, "WELCOME10", "sf-express", "1-3", "wechat", "paid", "shipped", now, now);
+    const order1 = await client.execute({
+      sql: `INSERT INTO orders (order_no, user_id, locale, currency, fx_rate, email, name, phone, company, country, province, city, address, postal,
+        subtotal_cents, shipping_cents, discount_cents, total_cents, coupon_code, shipping_code, shipping_days, payment_method, payment_status, status, created_at, paid_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [
+        "WL20261018001", demoUserId, "zh", "CNY", 1, "demo@walline.com", "张先生", "+86 139 0000 0000", "佛山雅居装饰工程有限公司",
+        "CN", "广东省", "佛山市", "南海区里水镇和顺花园 3 座 1802", "528244", 174000, 0, 17400, 156600, "WELCOME10",
+        "sf-express", "1-3", "wechat", "paid", "shipped", now, now,
+      ],
+    });
     const order1Id = Number(order1.lastInsertRowid);
-    db.prepare("INSERT INTO order_items (order_id, product_id, slug, name_zh, name_en, variant_zh, variant_en, unit_zh, unit_en, image, unit_price_cents, qty, weight_g) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(order1Id, panel.id, panel.slug, panel.name_zh, panel.name_en, "原木色", "Natural Oak", panel.unit_zh, panel.unit_en, panel.image, 6800, 20, 3800);
-    db.prepare("INSERT INTO order_items (order_id, product_id, slug, name_zh, name_en, variant_zh, variant_en, unit_zh, unit_en, image, unit_price_cents, qty, weight_g) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(order1Id, trim.id, trim.slug, trim.name_zh, trim.name_en, "哑光黑", "Matte Black", trim.unit_zh, trim.unit_en, trim.image, 3800, 10, 260);
+    await client.execute({
+      sql: "INSERT INTO order_items (order_id, product_id, slug, name_zh, name_en, variant_zh, variant_en, unit_zh, unit_en, image, unit_price_cents, qty, weight_g) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      args: [order1Id, panel.id, panel.slug, panel.name_zh, panel.name_en, "原木色", "Natural Oak", panel.unit_zh, panel.unit_en, panel.image, 6800, 20, 3800],
+    });
+    await client.execute({
+      sql: "INSERT INTO order_items (order_id, product_id, slug, name_zh, name_en, variant_zh, variant_en, unit_zh, unit_en, image, unit_price_cents, qty, weight_g) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      args: [order1Id, trim.id, trim.slug, trim.name_zh, trim.name_en, "哑光黑", "Matte Black", trim.unit_zh, trim.unit_en, trim.image, 3800, 10, 260],
+    });
 
-    const order2 = db
-      .prepare(
-        `INSERT INTO orders (order_no, user_id, locale, currency, fx_rate, email, name, phone, company, country, province, city, address, postal,
-          subtotal_cents, shipping_cents, discount_cents, total_cents, coupon_code, shipping_code, shipping_days, payment_method, payment_status, status, created_at, paid_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      )
-      .run("WL20261021002", demoUserId, "en", "USD", 0.1405, "demo@walline.com", "Mr. Zhang", "+86 139 0000 0000", "Foshan Yaju Decoration Co., Ltd.", "AU", "NSW", "Sydney", "12 Harbour View Rd", "2000", 396000, 92000, 0, 488000, "", "dhl-global", "5-9", "stripe", "paid", "processing", now, now);
+    const order2 = await client.execute({
+      sql: `INSERT INTO orders (order_no, user_id, locale, currency, fx_rate, email, name, phone, company, country, province, city, address, postal,
+        subtotal_cents, shipping_cents, discount_cents, total_cents, coupon_code, shipping_code, shipping_days, payment_method, payment_status, status, created_at, paid_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [
+        "WL20261021002", demoUserId, "en", "USD", 0.1405, "demo@walline.com", "Mr. Zhang", "+86 139 0000 0000",
+        "Foshan Yaju Decoration Co., Ltd.", "AU", "NSW", "Sydney", "12 Harbour View Rd", "2000", 396000, 92000, 0, 488000, "",
+        "dhl-global", "5-9", "stripe", "paid", "processing", now, now,
+      ],
+    });
     const order2Id = Number(order2.lastInsertRowid);
-    db.prepare("INSERT INTO order_items (order_id, product_id, slug, name_zh, name_en, variant_zh, variant_en, unit_zh, unit_en, image, unit_price_cents, qty, weight_g) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(order2Id, panel.id, panel.slug, panel.name_zh, panel.name_en, "胡桃木", "Walnut", panel.unit_zh, panel.unit_en, panel.image, 6800, 30, 3800);
-    db.prepare("INSERT INTO order_items (order_id, product_id, slug, name_zh, name_en, variant_zh, variant_en, unit_zh, unit_en, image, unit_price_cents, qty, weight_g) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(order2Id, trim.id, trim.slug, trim.name_zh, trim.name_en, "拉丝银", "Brushed Silver", trim.unit_zh, trim.unit_en, trim.image, 3800, 40, 260);
+    await client.execute({
+      sql: "INSERT INTO order_items (order_id, product_id, slug, name_zh, name_en, variant_zh, variant_en, unit_zh, unit_en, image, unit_price_cents, qty, weight_g) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      args: [order2Id, panel.id, panel.slug, panel.name_zh, panel.name_en, "胡桃木", "Walnut", panel.unit_zh, panel.unit_en, panel.image, 6800, 30, 3800],
+    });
+    await client.execute({
+      sql: "INSERT INTO order_items (order_id, product_id, slug, name_zh, name_en, variant_zh, variant_en, unit_zh, unit_en, image, unit_price_cents, qty, weight_g) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      args: [order2Id, trim.id, trim.slug, trim.name_zh, trim.name_en, "拉丝银", "Brushed Silver", trim.unit_zh, trim.unit_en, trim.image, 3800, 40, 260],
+    });
   }
 }

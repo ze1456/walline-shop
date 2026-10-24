@@ -18,7 +18,7 @@ export async function addToCart(formData: FormData): Promise<void> {
   const qty = Math.max(1, Number(formData.get("qty") ?? 1) || 1);
   if (!productId) redirect(back);
   const cartId = await ensureCart();
-  addCartItem(cartId, productId, Number.isFinite(variantId) ? variantId : null, qty);
+  await addCartItem(cartId, productId, Number.isFinite(variantId) ? variantId : null, qty);
   revalidatePath("/", "layout");
   redirect(`${back}${back.includes("?") ? "&" : "?"}added=1`);
 }
@@ -31,7 +31,7 @@ export async function buyNow(formData: FormData): Promise<void> {
   const qty = Math.max(1, Number(formData.get("qty") ?? 1) || 1);
   if (!productId) redirect(localeHref(locale, "/cart"));
   const cartId = await ensureCart();
-  addCartItem(cartId, productId, Number.isFinite(variantId) ? variantId : null, qty);
+  await addCartItem(cartId, productId, Number.isFinite(variantId) ? variantId : null, qty);
   revalidatePath("/", "layout");
   redirect(localeHref(locale, "/checkout"));
 }
@@ -42,7 +42,7 @@ export async function updateCartQty(formData: FormData): Promise<void> {
   const cartId = await getCurrentCartId();
   const itemId = Number(formData.get("itemId") ?? 0);
   const qty = Number(formData.get("qty") ?? 0);
-  if (cartId && itemId) setCartItemQty(cartId, itemId, qty);
+  if (cartId && itemId) await setCartItemQty(cartId, itemId, qty);
   revalidatePath("/", "layout");
   redirect(back);
 }
@@ -52,7 +52,7 @@ export async function removeFromCart(formData: FormData): Promise<void> {
   const back = pathFrom(formData, locale, "/cart");
   const cartId = await getCurrentCartId();
   const itemId = Number(formData.get("itemId") ?? 0);
-  if (cartId && itemId) removeCartItem(cartId, itemId);
+  if (cartId && itemId) await removeCartItem(cartId, itemId);
   revalidatePath("/", "layout");
   redirect(back);
 }
@@ -63,7 +63,7 @@ export async function applyCoupon(formData: FormData): Promise<void> {
   const code = String(formData.get("code") ?? "").trim();
   const back = localeHref(locale, "/cart");
   if (!cartId || !code) redirect(back);
-  setCartCoupon(cartId, code);
+  await setCartCoupon(cartId, code);
   revalidatePath("/", "layout");
   redirect(`${back}?coupon=${encodeURIComponent(code)}`);
 }
@@ -71,7 +71,7 @@ export async function applyCoupon(formData: FormData): Promise<void> {
 export async function removeCoupon(formData: FormData): Promise<void> {
   const locale = normalizeLocale(String(formData.get("locale") ?? ""));
   const cartId = await getCurrentCartId();
-  if (cartId) setCartCoupon(cartId, "");
+  if (cartId) await setCartCoupon(cartId, "");
   revalidatePath("/", "layout");
   redirect(localeHref(locale, "/cart"));
 }

@@ -1,15 +1,20 @@
-import { DatabaseSync } from "node:sqlite";
-import fs from "node:fs";
+import { createClient, type Client, type InValue } from "@libsql/client";
 import path from "node:path";
 import { seedDatabase } from "./seed";
 
-const dataDir = path.join(process.cwd(), "data");
-const dbFile = process.env.DATABASE_PATH ?? path.join(dataDir, "walline.db");
+// ---------------------------------------------------------------------------
+// WALLINE database layer — unified over @libsql/client.
+//
+// Local development:  DATABASE_PATH (default ./data/walline.db) → file: URL
+// Production (Turso): TURSO_DATABASE_URL (libsql://...) + TURSO_AUTH_TOKEN
+//
+// Exported helpers are all async:
+//   dbAll<T>(sql, args?) -> T[]
+//   dbGet<T>(sql, args?) -> T | undefined
+//   dbRun(sql, args?)    -> { rowsAffected, lastInsertRowid }
+// ---------------------------------------------------------------------------
 
 const SCHEMA = `
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -191,27 +196,80 @@ CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 `;
 
-function createDatabase(): DatabaseSync {
-  if (dbFile !== ":memory:") {
-    fs.mkdirSync(path.dirname(dbFile), { recursive: true });
-  }
-  const database = new DatabaseSync(dbFile);
-  database.exec(SCHEMA);
-  seedDatabase(database);
-  return database;
+/** Split a multi-statement SQL script into individual statements. */
+function splitStatements(script: string): string[] {
+  return script
+    .split(";\n")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((s) => (s.endsWith(";") ? s : `${s};`));
 }
 
-const globalForDb = globalThis as unknown as { __wallineDb?: DatabaseSync };
+const globalForDb = globalThis as unknown as { __wallineTurso?: Client };
 
-export const db: DatabaseSync = globalForDb.__wallineDb ?? (globalForDb.__wallineDb = createDatabase());
+function resolveUrl(): string {
+  if (process.env.TURSO_DATABASE_URL) return process.env.TURSO_DATABASE_URL;
+  const dbPath = process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "walline.db");
+  return `file:${dbPath}`;
+}
+
+let client: Client | null = null;
+let initPromise: Promise<void> | null = null;
+
+function getClient(): Client {
+  if (!client) {
+    const url = resolveUrl();
+    const config: { url: string; authToken?: string } = { url };
+    if (url.startsWith("libsql://")) {
+      const token = process.env.TURSO_AUTH_TOKEN;
+      if (token) config.authToken = token;
+    }
+    client = createClient(config);
+    globalForDb.__wallineTurso = client;
+  }
+  return client;
+}
+
+function ensureInit(): Promise<void> {
+  if (!initPromise) {
+    initPromise = (async () => {
+      const c = getClient();
+      const statements = splitStatements(SCHEMA);
+      await c.batch(statements, "write");
+      await seedDatabase(c);
+    })();
+  }
+  return initPromise;
+}
+
+export async function dbAll<T = Record<string, unknown>>(sql: string, args: InValue[] = []): Promise<T[]> {
+  await ensureInit();
+  const res = await getClient().execute({ sql, args });
+  return res.rows.map((row) => ({ ...row }) as unknown as T);
+}
+
+export async function dbGet<T = Record<string, unknown>>(sql: string, args: InValue[] = []): Promise<T | undefined> {
+  await ensureInit();
+  const res = await getClient().execute({ sql, args });
+  return res.rows.length > 0 ? ({ ...res.rows[0] } as unknown as T) : undefined;
+}
+
+export async function dbRun(sql: string, args: InValue[] = []): Promise<{ rowsAffected: number; lastInsertRowid: number }> {
+  await ensureInit();
+  const res = await getClient().execute({ sql, args });
+  const rawId = res.lastInsertRowid;
+  return { rowsAffected: Number(res.rowsAffected), lastInsertRowid: rawId == null ? 0 : Number(rawId) };
+}
+
+export async function closeDatabase(): Promise<void> {
+  if (client) {
+    client.close();
+    client = null;
+    globalForDb.__wallineTurso = undefined;
+    initPromise = null;
+  }
+}
 
 export function nowSql(): string {
   return new Date().toISOString().replace("T", " ").slice(0, 19);
-}
-
-export function closeDatabase(): void {
-  if (globalForDb.__wallineDb) {
-    globalForDb.__wallineDb.close();
-    globalForDb.__wallineDb = undefined;
-  }
 }

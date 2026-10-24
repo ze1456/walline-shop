@@ -16,11 +16,11 @@ export default async function PaypalReturnPage({
   const query = await searchParams;
   const orderNo = typeof query.order === "string" ? query.order : "";
   const paypalOrderId = typeof query.token === "string" ? query.token : "";
-  const order = orderNo ? getOrderByNo(orderNo) : undefined;
+  const order = orderNo ? await getOrderByNo(orderNo) : undefined;
 
   if (order && paypalOrderId && order.payment_status !== "paid") {
     const captured = await capturePaypalOrder(paypalOrderId);
-    if (captured.paid) markOrderPaid(order.id, captured.ref ?? paypalOrderId);
+    if (captured.paid) await markOrderPaid(order.id, captured.ref ?? paypalOrderId);
   }
 
   redirect(localeHref(locale, order ? `/orders/${order.order_no}?paid=1` : "/account/orders"));

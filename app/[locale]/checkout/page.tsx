@@ -45,7 +45,7 @@ export default async function CheckoutPage({
     );
   }
 
-  const options = shippingOptions(country.code, cart.weightG, cart.subtotalCents);
+  const options = await shippingOptions(country.code, cart.weightG, cart.subtotalCents);
   const methods = paymentMethodsFor(country.code);
   const paypalOk = paypalSupportsCurrency(currency);
   const paymentLabels: Record<PaymentMethodId, string> = {

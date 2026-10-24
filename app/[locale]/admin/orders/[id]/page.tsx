@@ -24,11 +24,11 @@ export default async function AdminOrderDetailPage({
   const resolved = await params;
   const locale = normalizeLocale(resolved.locale) as Locale;
   if (!(await isAdmin())) redirect(localeHref(locale, "/admin/login"));
-  const order = getOrderById(Number(resolved.id));
+  const order = await getOrderById(Number(resolved.id));
   if (!order) notFound();
   const query = await searchParams;
   const dict = getDictionary(locale);
-  const items = getOrderItems(order.id);
+  const items = await getOrderItems(order.id);
   const amount = (cents: number) => formatOrderCurrency(cents, order.currency, order.fx_rate, locale);
   const paymentName = paymentMethods.find((method) => method.id === order.payment_method);
 

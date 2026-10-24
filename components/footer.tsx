@@ -5,7 +5,7 @@ import { localeHref, tr } from "@/lib/i18n";
 import { listCategories } from "@/lib/data";
 
 export async function Footer({ locale, dict }: { locale: Locale; dict: Dictionary }) {
-  const categories = listCategories();
+  const categories = await listCategories();
   const infoLinks = ["about", "contact", "shipping", "returns", "privacy", "terms"] as const;
   const infoLabels: Record<(typeof infoLinks)[number], string> = {
     about: dict.footer.about,

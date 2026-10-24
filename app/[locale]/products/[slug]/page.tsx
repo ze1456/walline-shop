@@ -20,7 +20,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale: raw, slug } = await params;
   const locale = normalizeLocale(raw);
-  const product = getProductBySlug(slug);
+  const product = await getProductBySlug(slug);
   if (!product) return {};
   const name = tr(locale, { zh: product.name_zh, en: product.name_en });
   return { title: name, description: tr(locale, { zh: product.subtitle_zh, en: product.subtitle_en }) };
@@ -37,17 +37,17 @@ export default async function ProductDetailPage({
   const locale = normalizeLocale(raw);
   if (raw !== locale) notFound();
   const query = await searchParams;
-  const product = getProductBySlug(slug);
+  const product = await getProductBySlug(slug);
   if (!product || !product.active) notFound();
 
   const dict = getDictionary(locale);
   const currency = await getCurrentCurrency();
-  const variants = getVariants(product.id);
+  const variants = await getVariants(product.id);
   const specs = parseSpecs(product.specs);
   const images = parseImages(product.images);
   const gallery = images.length > 0 ? images : [product.image || `/images/products/${product.slug}.svg`];
-  const related = getRelatedProducts(product, 4);
-  const category = getCategory(product.category);
+  const related = await getRelatedProducts(product, 4);
+  const category = await getCategory(product.category);
   const backHref = localeHref(locale, `/products?category=${product.category}`);
   const added = query.added === "1";
   const name = tr(locale, { zh: product.name_zh, en: product.name_en });

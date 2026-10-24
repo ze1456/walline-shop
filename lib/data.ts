@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { dbAll, dbGet } from "./db";
 
 export interface CategoryRow {
   slug: string;
@@ -77,12 +77,12 @@ export function parseImages(raw: string): string[] {
   }
 }
 
-export function listCategories(): CategoryRow[] {
-  return db.prepare("SELECT * FROM categories ORDER BY sort ASC").all() as unknown as CategoryRow[];
+export async function listCategories(): Promise<CategoryRow[]> {
+  return dbAll<CategoryRow>("SELECT * FROM categories ORDER BY sort ASC");
 }
 
-export function getCategory(slug: string): CategoryRow | undefined {
-  return db.prepare("SELECT * FROM categories WHERE slug = ?").get(slug) as unknown as CategoryRow | undefined;
+export async function getCategory(slug: string): Promise<CategoryRow | undefined> {
+  return dbGet<CategoryRow>("SELECT * FROM categories WHERE slug = ?", [slug]);
 }
 
 export interface ProductQuery {
@@ -110,7 +110,7 @@ function buildProductWhere(query: ProductQuery): { sql: string; params: (string 
   return { sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }
 
-export function listProducts(query: ProductQuery = {}): ProductRow[] {
+export async function listProducts(query: ProductQuery = {}): Promise<ProductRow[]> {
   const where = buildProductWhere(query);
   const order =
     query.sort === "price_asc"
@@ -122,53 +122,56 @@ export function listProducts(query: ProductQuery = {}): ProductRow[] {
           : "featured DESC, sort ASC, id ASC";
   const limit = query.limit ?? 200;
   const offset = query.offset ?? 0;
-  return db
-    .prepare(`SELECT * FROM products ${where.sql} ORDER BY ${order} LIMIT ? OFFSET ?`)
-    .all(...where.params, limit, offset) as unknown as ProductRow[];
+  return dbAll<ProductRow>(`SELECT * FROM products ${where.sql} ORDER BY ${order} LIMIT ? OFFSET ?`, [
+    ...where.params,
+    limit,
+    offset,
+  ]);
 }
 
-export function countProducts(query: ProductQuery = {}): number {
+export async function countProducts(query: ProductQuery = {}): Promise<number> {
   const where = buildProductWhere(query);
-  const row = db.prepare(`SELECT COUNT(*) AS n FROM products ${where.sql}`).get(...where.params) as { n: number };
-  return row.n;
+  const row = await dbGet<{ n: number }>(`SELECT COUNT(*) AS n FROM products ${where.sql}`, where.params);
+  return row?.n ?? 0;
 }
 
-export function getProductBySlug(slug: string, includeHidden = false): ProductRow | undefined {
+export async function getProductBySlug(slug: string, includeHidden = false): Promise<ProductRow | undefined> {
   const sql = includeHidden ? "SELECT * FROM products WHERE slug = ?" : "SELECT * FROM products WHERE slug = ? AND active = 1";
-  return db.prepare(sql).get(slug) as unknown as ProductRow | undefined;
+  return dbGet<ProductRow>(sql, [slug]);
 }
 
-export function getProductById(id: number): ProductRow | undefined {
-  return db.prepare("SELECT * FROM products WHERE id = ?").get(id) as unknown as ProductRow | undefined;
+export async function getProductById(id: number): Promise<ProductRow | undefined> {
+  return dbGet<ProductRow>("SELECT * FROM products WHERE id = ?", [id]);
 }
 
-export function getVariants(productId: number): VariantRow[] {
-  return db.prepare("SELECT * FROM variants WHERE product_id = ? ORDER BY sort ASC, id ASC").all(productId) as unknown as VariantRow[];
+export async function getVariants(productId: number): Promise<VariantRow[]> {
+  return dbAll<VariantRow>("SELECT * FROM variants WHERE product_id = ? ORDER BY sort ASC, id ASC", [productId]);
 }
 
-export function getFeaturedProducts(limit = 8): ProductRow[] {
-  return db.prepare("SELECT * FROM products WHERE active = 1 AND featured = 1 ORDER BY sort ASC, id ASC LIMIT ?").all(limit) as unknown as ProductRow[];
+export async function getFeaturedProducts(limit = 8): Promise<ProductRow[]> {
+  return dbAll<ProductRow>("SELECT * FROM products WHERE active = 1 AND featured = 1 ORDER BY sort ASC, id ASC LIMIT ?", [limit]);
 }
 
-export function getRelatedProducts(product: ProductRow, limit = 4): ProductRow[] {
-  return db
-    .prepare("SELECT * FROM products WHERE active = 1 AND category = ? AND id != ? ORDER BY sort ASC LIMIT ?")
-    .all(product.category, product.id, limit) as unknown as ProductRow[];
+export async function getRelatedProducts(product: ProductRow, limit = 4): Promise<ProductRow[]> {
+  return dbAll<ProductRow>("SELECT * FROM products WHERE active = 1 AND category = ? AND id != ? ORDER BY sort ASC LIMIT ?", [
+    product.category,
+    product.id,
+    limit,
+  ]);
 }
 
-export function getSampleProduct(): ProductRow | undefined {
-  return db.prepare("SELECT * FROM products WHERE slug = 'acc-sample' AND active = 1").get() as unknown as ProductRow | undefined;
+export async function getSampleProduct(): Promise<ProductRow | undefined> {
+  return dbGet<ProductRow>("SELECT * FROM products WHERE slug = 'acc-sample' AND active = 1");
 }
 
-export function categoryCounts(): Record<string, number> {
-  const rows = db.prepare("SELECT category, COUNT(*) AS n FROM products WHERE active = 1 GROUP BY category").all() as unknown as {
-    category: string;
-    n: number;
-  }[];
+export async function categoryCounts(): Promise<Record<string, number>> {
+  const rows = await dbAll<{ category: string; n: number }>(
+    "SELECT category, COUNT(*) AS n FROM products WHERE active = 1 GROUP BY category",
+  );
   return Object.fromEntries(rows.map((r) => [r.category, r.n]));
 }
 
-export function getSetting(key: string, fallback = ""): string {
-  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined;
+export async function getSetting(key: string, fallback = ""): Promise<string> {
+  const row = await dbGet<{ value: string }>("SELECT value FROM settings WHERE key = ?", [key]);
   return row?.value ?? fallback;
 }

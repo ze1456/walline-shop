@@ -14,6 +14,7 @@
     "standalone": "node scripts/copy-standalone.mjs"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@next/env": "16.4.3",
     "@swc/helpers": "0.5.23",
     "baseline-browser-mapping": "^2.11.31",

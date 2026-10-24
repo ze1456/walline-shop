@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { dbAll, dbGet, dbRun } from "./db";
 import { loadCart, clearCartItems } from "./cart";
 import { getShippingMethod, shippingCost } from "./shipping";
 import { evaluateCoupon, redeemCoupon } from "./coupons";
@@ -76,22 +76,22 @@ export interface CheckoutInput {
 
 export type CreateOrderResult = { ok: true; order: OrderRow } | { ok: false; error: "empty" | "shipping" | "country" | "invalid" };
 
-function nextOrderNo(): string {
+async function nextOrderNo(): Promise<string> {
   const now = new Date();
   const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const suffix = String(Math.floor(Math.random() * 900) + 100);
     const candidate = `WL${stamp}${suffix}`;
-    const exists = db.prepare("SELECT 1 FROM orders WHERE order_no = ?").get(candidate);
+    const exists = await dbGet("SELECT 1 FROM orders WHERE order_no = ?", [candidate]);
     if (!exists) return candidate;
   }
   return `WL${stamp}${Date.now().toString().slice(-4)}`;
 }
 
-export function createOrderFromCart(input: CheckoutInput): CreateOrderResult {
-  const cart = loadCart(input.cartId);
+export async function createOrderFromCart(input: CheckoutInput): Promise<CreateOrderResult> {
+  const cart = await loadCart(input.cartId);
   if (cart.lines.length === 0) return { ok: false, error: "empty" };
-  const method = getShippingMethod(input.shippingCode);
+  const method = await getShippingMethod(input.shippingCode);
   if (!method) return { ok: false, error: "shipping" };
   if (method.country_group !== countryGroup(input.country)) return { ok: false, error: "country" };
   if (!input.email.includes("@") || !input.name.trim() || !input.address.trim()) return { ok: false, error: "invalid" };
@@ -100,7 +100,7 @@ export function createOrderFromCart(input: CheckoutInput): CreateOrderResult {
   let discountCents = 0;
   let couponCode = "";
   if (cart.couponCode) {
-    const coupon = evaluateCoupon(cart.couponCode, cart.subtotalCents);
+    const coupon = await evaluateCoupon(cart.couponCode, cart.subtotalCents);
     if (!coupon.ok) return { ok: false, error: "invalid" };
     discountCents = coupon.discountCents;
     couponCode = coupon.coupon.code;
@@ -108,17 +108,15 @@ export function createOrderFromCart(input: CheckoutInput): CreateOrderResult {
   const totalCents = Math.max(0, cart.subtotalCents - discountCents) + shippingCents;
   const currency = currencies[input.currency] ?? currencies.CNY;
   const now = new Date().toISOString().replace("T", " ").slice(0, 19);
-  const orderNo = nextOrderNo();
+  const orderNo = await nextOrderNo();
 
-  const result = db
-    .prepare(
-      `INSERT INTO orders (
-        order_no, user_id, locale, currency, fx_rate, email, name, phone, company, country, province, city,
-        address, postal, note, subtotal_cents, shipping_cents, discount_cents, total_cents, coupon_code,
-        shipping_code, shipping_days, payment_method, payment_status, status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', 'pending_payment', ?, ?)`,
-    )
-    .run(
+  const result = await dbRun(
+    `INSERT INTO orders (
+      order_no, user_id, locale, currency, fx_rate, email, name, phone, company, country, province, city,
+      address, postal, note, subtotal_cents, shipping_cents, discount_cents, total_cents, coupon_code,
+      shipping_code, shipping_days, payment_method, payment_status, status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', 'pending_payment', ?, ?)`,
+    [
       orderNo,
       input.userId,
       input.locale,
@@ -144,17 +142,16 @@ export function createOrderFromCart(input: CheckoutInput): CreateOrderResult {
       input.paymentMethod,
       now,
       now,
-    );
-  const orderId = Number(result.lastInsertRowid);
-
-  const insertItem = db.prepare(
-    `INSERT INTO order_items (
-      order_id, product_id, slug, name_zh, name_en, variant_zh, variant_en, unit_zh, unit_en, image,
-      unit_price_cents, qty, weight_g
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ],
   );
+  const orderId = result.lastInsertRowid;
+
+  const insertItemSql = `INSERT INTO order_items (
+    order_id, product_id, slug, name_zh, name_en, variant_zh, variant_en, unit_zh, unit_en, image,
+    unit_price_cents, qty, weight_g
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
   for (const line of cart.lines) {
-    insertItem.run(
+    await dbRun(insertItemSql, [
       orderId,
       line.productId,
       line.slug,
@@ -168,28 +165,29 @@ export function createOrderFromCart(input: CheckoutInput): CreateOrderResult {
       line.priceCents,
       line.qty,
       line.weightG,
-    );
+    ]);
   }
 
-  clearCartItems(input.cartId);
-  if (couponCode) redeemCoupon(couponCode);
-  return { ok: true, order: getOrderById(orderId)! };
+  await clearCartItems(input.cartId);
+  if (couponCode) await redeemCoupon(couponCode);
+  const order = await getOrderById(orderId);
+  return { ok: true, order: order! };
 }
 
-export function getOrderById(id: number): OrderRow | undefined {
-  return db.prepare("SELECT * FROM orders WHERE id = ?").get(id) as unknown as OrderRow | undefined;
+export async function getOrderById(id: number): Promise<OrderRow | undefined> {
+  return dbGet<OrderRow>("SELECT * FROM orders WHERE id = ?", [id]);
 }
 
-export function getOrderByNo(orderNo: string): OrderRow | undefined {
-  return db.prepare("SELECT * FROM orders WHERE order_no = ?").get(orderNo.trim()) as unknown as OrderRow | undefined;
+export async function getOrderByNo(orderNo: string): Promise<OrderRow | undefined> {
+  return dbGet<OrderRow>("SELECT * FROM orders WHERE order_no = ?", [orderNo.trim()]);
 }
 
-export function getOrderItems(orderId: number): OrderItemRow[] {
-  return db.prepare("SELECT * FROM order_items WHERE order_id = ? ORDER BY id ASC").all(orderId) as unknown as OrderItemRow[];
+export async function getOrderItems(orderId: number): Promise<OrderItemRow[]> {
+  return dbAll<OrderItemRow>("SELECT * FROM order_items WHERE order_id = ? ORDER BY id ASC", [orderId]);
 }
 
-export function listOrdersForUser(userId: number): OrderRow[] {
-  return db.prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC").all(userId) as unknown as OrderRow[];
+export async function listOrdersForUser(userId: number): Promise<OrderRow[]> {
+  return dbAll<OrderRow>("SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC", [userId]);
 }
 
 export interface AdminOrderQuery {
@@ -199,7 +197,7 @@ export interface AdminOrderQuery {
   offset?: number;
 }
 
-export function listAllOrders(query: AdminOrderQuery = {}): OrderRow[] {
+export async function listAllOrders(query: AdminOrderQuery = {}): Promise<OrderRow[]> {
   const clauses: string[] = [];
   const params: (string | number)[] = [];
   if (query.status) {
@@ -212,56 +210,57 @@ export function listAllOrders(query: AdminOrderQuery = {}): OrderRow[] {
     params.push(like, like, like, like);
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-  return db
-    .prepare(`SELECT * FROM orders ${where} ORDER BY id DESC LIMIT ? OFFSET ?`)
-    .all(...params, query.limit ?? 100, query.offset ?? 0) as unknown as OrderRow[];
+  return dbAll<OrderRow>(`SELECT * FROM orders ${where} ORDER BY id DESC LIMIT ? OFFSET ?`, [
+    ...params,
+    query.limit ?? 100,
+    query.offset ?? 0,
+  ]);
 }
 
-export function countOrdersByStatus(): Record<string, number> {
-  const rows = db.prepare("SELECT status, COUNT(*) AS n FROM orders GROUP BY status").all() as unknown as {
-    status: string;
-    n: number;
-  }[];
+export async function countOrdersByStatus(): Promise<Record<string, number>> {
+  const rows = await dbAll<{ status: string; n: number }>("SELECT status, COUNT(*) AS n FROM orders GROUP BY status");
   return Object.fromEntries(rows.map((row) => [row.status, row.n]));
 }
 
-export function totalRevenueCents(): number {
-  const row = db
-    .prepare("SELECT COALESCE(SUM(total_cents), 0) AS total FROM orders WHERE payment_status = 'paid'")
-    .get() as { total: number };
-  return row.total;
+export async function totalRevenueCents(): Promise<number> {
+  const row = await dbGet<{ total: number }>(
+    "SELECT COALESCE(SUM(total_cents), 0) AS total FROM orders WHERE payment_status = 'paid'",
+  );
+  return row?.total ?? 0;
 }
 
-export function markOrderPaid(orderId: number, paymentRef = ""): void {
-  const order = getOrderById(orderId);
+export async function markOrderPaid(orderId: number, paymentRef = ""): Promise<void> {
+  const order = await getOrderById(orderId);
   if (!order || order.payment_status === "paid") return;
   const now = new Date().toISOString().replace("T", " ").slice(0, 19);
-  db.prepare(
+  await dbRun(
     "UPDATE orders SET payment_status = 'paid', status = 'paid', paid_at = ?, payment_ref = ?, updated_at = ? WHERE id = ?",
-  ).run(now, paymentRef, now, orderId);
-  for (const item of getOrderItems(orderId)) {
+    [now, paymentRef, now, orderId],
+  );
+  const items = await getOrderItems(orderId);
+  for (const item of items) {
     if (item.product_id) {
-      db.prepare("UPDATE products SET stock = MAX(0, stock - ?) WHERE id = ?").run(item.qty, item.product_id);
+      await dbRun("UPDATE products SET stock = MAX(0, stock - ?) WHERE id = ?", [item.qty, item.product_id]);
     }
   }
 }
 
-export function updateOrderStatus(orderId: number, status: string, trackingNo?: string): void {
+export async function updateOrderStatus(orderId: number, status: string, trackingNo?: string): Promise<void> {
   const now = new Date().toISOString().replace("T", " ").slice(0, 19);
   if (typeof trackingNo === "string") {
-    db.prepare("UPDATE orders SET status = ?, tracking_no = ?, updated_at = ? WHERE id = ?").run(status, trackingNo, now, orderId);
+    await dbRun("UPDATE orders SET status = ?, tracking_no = ?, updated_at = ? WHERE id = ?", [status, trackingNo, now, orderId]);
   } else {
-    db.prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?").run(status, now, orderId);
+    await dbRun("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?", [status, now, orderId]);
   }
 }
 
-export function markOrderRefunded(orderId: number): void {
+export async function markOrderRefunded(orderId: number): Promise<void> {
   const now = new Date().toISOString().replace("T", " ").slice(0, 19);
-  db.prepare("UPDATE orders SET status = 'refunded', payment_status = 'refunded', updated_at = ? WHERE id = ?").run(now, orderId);
+  await dbRun("UPDATE orders SET status = 'refunded', payment_status = 'refunded', updated_at = ? WHERE id = ?", [now, orderId]);
 }
 
-export function setOrderPaymentRef(orderId: number, ref: string): void {
-  db.prepare("UPDATE orders SET payment_ref = ? WHERE id = ?").run(ref, orderId);
+export async function setOrderPaymentRef(orderId: number, ref: string): Promise<void> {
+  await dbRun("UPDATE orders SET payment_ref = ? WHERE id = ?", [ref, orderId]);
 }
 
 /** Format an order amount stored in CNY cents into the order's currency. */

@@ -13,10 +13,10 @@ export default async function AdminEditProductPage({ params }: { params: Promise
   const resolved = await params;
   const locale = normalizeLocale(resolved.locale) as Locale;
   if (!(await isAdmin())) redirect(localeHref(locale, "/admin/login"));
-  const product = getProductById(Number(resolved.id));
+  const product = await getProductById(Number(resolved.id));
   if (!product) notFound();
   const dict = getDictionary(locale);
-  const categories = listCategories();
+  const categories = await listCategories();
 
   return (
     <AdminShell locale={locale} active="products">

@@ -21,7 +21,7 @@ export default async function AdminCouponsPage({
   if (!(await isAdmin())) redirect(localeHref(locale, "/admin/login"));
   const dict = getDictionary(locale);
   const query = await searchParams;
-  const coupons = listCoupons();
+  const coupons = await listCoupons();
   const zh = locale === "zh";
   const inputClass = "field mt-1.5 text-sm";
 

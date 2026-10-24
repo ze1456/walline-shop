@@ -22,8 +22,8 @@ export default async function AdminProductsPage({
   if (!(await isAdmin())) redirect(localeHref(locale, "/admin/login"));
   const dict = getDictionary(locale);
   const query = await searchParams;
-  const products = listProducts({ includeHidden: true, limit: 200 });
-  const categories = listCategories();
+  const products = await listProducts({ includeHidden: true, limit: 200 });
+  const categories = await listCategories();
   const categoryNames = new Map(categories.map((c) => [c.slug, locale === "zh" ? c.name_zh : c.name_en]));
 
   return (

@@ -2,7 +2,7 @@
 // Run: node --import ./scripts/register-ts.mjs scripts/generate-images.mjs
 import fs from "node:fs";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { dbAll, closeDatabase } from "../lib/db.ts";
 
 const root = process.cwd();
 const outDir = path.join(root, "public", "images");
@@ -211,11 +211,9 @@ function placeholder() {
 </svg>`;
 }
 
-const dbPath = path.join(root, "data", "walline.db");
-const db = new DatabaseSync(dbPath);
-const products = db.prepare("SELECT slug, category FROM products ORDER BY id").all();
-const categories = db.prepare("SELECT slug FROM categories ORDER BY sort").all();
-db.close();
+const products = await dbAll("SELECT slug, category FROM products ORDER BY id");
+const categories = await dbAll("SELECT slug FROM categories ORDER BY sort");
+await closeDatabase();
 
 let written = 0;
 for (const product of products) {

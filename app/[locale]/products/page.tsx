@@ -29,7 +29,7 @@ export default async function ProductsPage({
   const query = await searchParams;
   const dict = getDictionary(locale);
   const currency = await getCurrentCurrency();
-  const categories = listCategories();
+  const categories = await listCategories();
 
   const category = typeof query.category === "string" ? query.category : "";
   const q = typeof query.q === "string" ? query.q.trim() : "";
@@ -40,8 +40,8 @@ export default async function ProductsPage({
 
   const filter = { category, q, sort };
   const [products, total] = await Promise.all([
-    Promise.resolve(listProducts({ ...filter, limit: pageSize, offset: (page - 1) * pageSize })),
-    Promise.resolve(countProducts(filter)),
+    listProducts({ ...filter, limit: pageSize, offset: (page - 1) * pageSize }),
+    countProducts(filter),
   ]);
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const activeCategory = categories.find((item) => item.slug === category);

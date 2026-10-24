@@ -37,10 +37,10 @@ export default async function OrderPage({
   const { locale: raw, orderNo } = await params;
   const locale = normalizeLocale(raw);
   if (raw !== locale) notFound();
-  const order = getOrderByNo(decodeURIComponent(orderNo));
+  const order = await getOrderByNo(decodeURIComponent(orderNo));
   if (!order) notFound();
   const dict = getDictionary(locale);
-  const items = getOrderItems(order.id);
+  const items = await getOrderItems(order.id);
   const label = statusLabels[order.status as OrderStatus] ?? statusLabels.pending_payment;
   const flow = paymentFlowFor(order.payment_method as PaymentMethodId, order.currency);
   const amount = (cents: number) => formatOrderCurrency(cents, order.currency, order.fx_rate, locale);

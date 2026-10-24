@@ -15,7 +15,7 @@ export default async function CheckoutCancelledPage({
   const locale = normalizeLocale((await params).locale);
   const query = await searchParams;
   const orderNo = typeof query.order === "string" ? query.order : "";
-  const order = orderNo ? getOrderByNo(orderNo) : undefined;
+  const order = orderNo ? await getOrderByNo(orderNo) : undefined;
   const dict = getDictionary(locale);
 
   return (

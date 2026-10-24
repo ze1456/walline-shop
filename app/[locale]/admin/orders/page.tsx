@@ -26,7 +26,7 @@ export default async function AdminOrdersPage({
   const query = await searchParams;
   const status = typeof query.status === "string" && query.status in statusLabels ? query.status : undefined;
   const q = typeof query.q === "string" ? query.q : undefined;
-  const orders = listAllOrders({ status, q, limit: 100 });
+  const orders = await listAllOrders({ status, q, limit: 100 });
 
   return (
     <AdminShell locale={locale} active="orders">

@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { dbAll, dbGet } from "./db";
 import { countryGroup } from "./config";
 
 export interface ShippingRow {
@@ -23,11 +23,9 @@ export interface ShippingOption extends ShippingRow {
   freeApplied: boolean;
 }
 
-export function shippingMethodsFor(countryCode: string): ShippingRow[] {
+export async function shippingMethodsFor(countryCode: string): Promise<ShippingRow[]> {
   const group = countryGroup(countryCode);
-  return db
-    .prepare("SELECT * FROM shipping_methods WHERE active = 1 AND country_group = ? ORDER BY sort ASC")
-    .all(group) as unknown as ShippingRow[];
+  return dbAll<ShippingRow>("SELECT * FROM shipping_methods WHERE active = 1 AND country_group = ? ORDER BY sort ASC", [group]);
 }
 
 /** First kilogram is included in the base rate; each extra started kilo adds per-kg. */
@@ -39,15 +37,16 @@ export function shippingCost(method: ShippingRow, weightG: number, subtotalCents
   return { costCents: freeApplied ? 0 : cost, freeApplied };
 }
 
-export function shippingOptions(countryCode: string, weightG: number, subtotalCents: number): ShippingOption[] {
-  return shippingMethodsFor(countryCode).map((method) => {
+export async function shippingOptions(countryCode: string, weightG: number, subtotalCents: number): Promise<ShippingOption[]> {
+  const methods = await shippingMethodsFor(countryCode);
+  return methods.map((method) => {
     const { costCents, freeApplied } = shippingCost(method, weightG, subtotalCents);
     return { ...method, costCents, freeApplied };
   });
 }
 
-export function getShippingMethod(code: string): ShippingRow | undefined {
-  return db.prepare("SELECT * FROM shipping_methods WHERE code = ?").get(code) as unknown as ShippingRow | undefined;
+export async function getShippingMethod(code: string): Promise<ShippingRow | undefined> {
+  return dbGet<ShippingRow>("SELECT * FROM shipping_methods WHERE code = ?", [code]);
 }
 
 export function formatDays(method: { days_min: number; days_max: number }): string {
